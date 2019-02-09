@@ -11,6 +11,9 @@ use core::any::TypeId;
 use rcc::{Clocks, APB1, APB2};
 use time::Hertz;
 
+#[cfg(feature = "time_units")]
+use embedded_hal_time::{RealCountDown, Microsecond, Millisecond, Second};
+
 /// Interrupt events
 pub enum Event {
     /// Timer timed out / count down ended
@@ -182,6 +185,84 @@ macro_rules! hal {
             }
 
             impl Periodic for Timer<$TIMX> {}
+
+            #[cfg(feature = "time_units")]
+            impl RealCountDown<Microsecond> for Timer<$TIMX> {
+                fn start_real(&mut self, timeout: Microsecond) {
+                    // pause
+                    self.tim.cr1.modify(|_, w| w.cen().clear_bit());
+                    // restart counter
+                    self.tim.cnt.reset();
+
+                    // TODO: Division is slow, try avoid this division
+                    let ticks_per_microsecond = self.clocks.pclk1().0 * if self.clocks.ppre1() == 1 { 1 } else { 2 } / 1_000_000;
+                    let ticks = ticks_per_microsecond * timeout.0;
+
+                    let psc = u16((ticks - 1) / (1 << 16)).unwrap();
+                    // NOTE: Unverified unsafe, worked in previous crate
+                    unsafe {
+                        self.tim.psc.write(|w| w.psc().bits(psc));
+                    }
+
+                    let arr = u16(ticks / u32(psc + 1)).unwrap();
+                    self.tim.arr.write(|w| unsafe { w.bits(u32(arr)) });
+
+                    // start counter
+                    self.tim.cr1.modify(|_, w| w.cen().set_bit());
+                }
+            }
+
+            #[cfg(feature = "time_units")]
+            impl RealCountDown<Millisecond> for Timer<$TIMX> {
+                fn start_real(&mut self, timeout: Millisecond) {
+                    // pause
+                    self.tim.cr1.modify(|_, w| w.cen().clear_bit());
+                    // restart counter
+                    self.tim.cnt.reset();
+
+                    // TODO: Division is slow, try avoid this division
+                    let ticks_per_microsecond = self.clocks.pclk1().0 * if self.clocks.ppre1() == 1 { 1 } else { 2 } / 1_000;
+                    let ticks = ticks_per_microsecond * timeout.0;
+
+                    let psc = u16((ticks - 1) / (1 << 16)).unwrap();
+                    // NOTE: Unverified unsafe, worked in previous crate
+                    unsafe {
+                        self.tim.psc.write(|w| w.psc().bits(psc));
+                    }
+
+                    let arr = u16(ticks / u32(psc + 1)).unwrap();
+                    self.tim.arr.write(|w| unsafe { w.bits(u32(arr)) });
+
+                    // start counter
+                    self.tim.cr1.modify(|_, w| w.cen().set_bit());
+                }
+            }
+
+            #[cfg(feature = "time_units")]
+            impl RealCountDown<Second> for Timer<$TIMX> {
+                fn start_real(&mut self, timeout: Second) {
+                    // pause
+                    self.tim.cr1.modify(|_, w| w.cen().clear_bit());
+                    // restart counter
+                    self.tim.cnt.reset();
+
+                    // TODO: Division is slow, try avoid this division
+                    let ticks_per_microsecond = self.clocks.pclk1().0 * if self.clocks.ppre1() == 1 { 1 } else { 2 };
+                    let ticks = ticks_per_microsecond * timeout.0;
+
+                    let psc = u16((ticks - 1) / (1 << 16)).unwrap();
+                    // NOTE: Unverified unsafe, worked in previous crate
+                    unsafe {
+                        self.tim.psc.write(|w| w.psc().bits(psc));
+                    }
+
+                    let arr = u16(ticks / u32(psc + 1)).unwrap();
+                    self.tim.arr.write(|w| unsafe { w.bits(u32(arr)) });
+
+                    // start counter
+                    self.tim.cr1.modify(|_, w| w.cen().set_bit());
+                }
+}
         )+
     }
 }
