@@ -40,11 +40,13 @@ fn main() -> ! {
     let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh);
     // Try a different timer (even SYST)
     let mut timer = Timer::tim2(dp.TIM2, 1.hz(), clocks, &mut rcc.apb1);
-    timer.start_real(Second(1));
+    let mut timer2 = Timer::tim3(dp.TIM3, 1.hz(), clocks, &mut rcc.apb1);
     loop {
+        timer.start_real(Second(1));
         block!(timer.wait()).unwrap();
         led.set_high();
-        block!(timer.wait()).unwrap();
+        timer2.start_real(Second(1));
+        block!(timer2.wait()).unwrap();
         led.set_low();
     }
 }
