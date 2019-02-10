@@ -11,6 +11,9 @@ use core::any::TypeId;
 use rcc::{Clocks, APB1, APB2};
 use time::Hertz;
 
+#[cfg(feature = "time_units")]
+use embedded_hal_time::{RealCountDown, Microsecond, Millisecond, Second};
+
 /// Interrupt events
 pub enum Event {
     /// Timer timed out / count down ended
@@ -182,6 +185,61 @@ macro_rules! hal {
             }
 
             impl Periodic for Timer<$TIMX> {}
+
+            #[cfg(feature = "time_units")]
+            impl RealCountDown<Microsecond> for Timer<$TIMX> {
+                fn start_real(&mut self, timeout: Microsecond) {
+                    // TODO: Division is slow, try avoid this division
+                    let ticks_per_microsecond = self.clocks.pclk1().0 * if self.clocks.ppre1() == 1 { 1 } else { 2 } / 1_000_000;
+                    let ticks = ticks_per_microsecond * timeout.0;
+                    self.start_ticks(ticks);
+                }
+            }
+
+            #[cfg(feature = "time_units")]
+            impl RealCountDown<Millisecond> for Timer<$TIMX> {
+                fn start_real(&mut self, timeout: Millisecond) {
+                    // TODO: Division is slow, try avoid this division
+                    let ticks_per_microsecond = self.clocks.pclk1().0 * if self.clocks.ppre1() == 1 { 1 } else { 2 } / 1_000;
+                    let ticks = ticks_per_microsecond * timeout.0;
+
+                    self.start_ticks(ticks);
+                }
+            }
+
+            #[cfg(feature = "time_units")]
+            impl RealCountDown<Second> for Timer<$TIMX> {
+                fn start_real(&mut self, timeout: Second) {
+                    // TODO: Division is slow, try avoid this division
+                    let ticks_per_microsecond = self.clocks.pclk1().0 * if self.clocks.ppre1() == 1 { 1 } else { 2 };
+                    let ticks = ticks_per_microsecond * timeout.0;
+                    
+                    self.start_ticks(ticks);
+                }
+            }
+
+            impl Timer<$TIMX> {
+                fn start_ticks(&mut self, ticks: u32) {
+                    // pause
+                    self.tim.cr1.modify(|_, w| w.cen().clear_bit());
+
+                    let psc = u16((ticks - 1) / (1 << 16)).unwrap();
+                    self.tim.psc.write(|w| unsafe { w.psc().bits(psc) });
+
+                    let arr = u16(ticks / u32(psc + 1)).unwrap();
+                    self.tim.arr.write(|w| unsafe { w.bits(u32(arr)) });
+
+                    // Trigger an update event to load the prescaler value to the clock
+                    self.tim.egr.write(|w| w.ug().set_bit());
+                    // The above line raises an update event which will indicate
+                    // that the timer is already finished. Since this is not the case,
+                    // it should be cleared
+                    self.tim.sr.modify(|_, w| w.uif().clear_bit());
+
+                    // start counter
+                    self.tim.cr1.modify(|_, w| w.cen().set_bit());
+                }
+            }
         )+
     }
 }

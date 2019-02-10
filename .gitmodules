@@ -1,0 +1,3 @@
+[submodule "embedded-hal-time"]
+	path = embedded-hal-time
+	url = git@github.com:TheZoq2/embedded-hal-time.git

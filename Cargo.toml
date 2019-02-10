@@ -41,6 +41,10 @@ m = "0.1.1"
 mfrc522 = "0.2.0"
 serde_derive = "1.0.87"
 
+[dependencies.embedded-hal-time]
+path = "embedded-hal-time"
+optional = true
+
 [dev-dependencies.byteorder]
 default-features = false
 version = "1.3.1"
@@ -81,6 +85,7 @@ version = "1.0.87"
 doc = []
 rt = ["stm32f1/rt"]
 stm32f103 = ["stm32f1/stm32f103"]
+time_units = ["embedded-hal-time"]
 
 [profile.dev]
 incremental = false

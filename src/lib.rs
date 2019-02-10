@@ -45,6 +45,9 @@ extern crate void;
 
 pub extern crate stm32f1;
 
+#[cfg(feature = "time_units")]
+extern crate embedded_hal_time;
+
 #[cfg(feature = "stm32f103")]
 pub use stm32f1::stm32f103 as stm32;
 
