@@ -23,9 +23,10 @@ pub enum AdcReadError {
     Busy
 }
 
-struct DisabledAdc<ADC> {
+pub struct DisabledAdc<ADC> {
     adc: Adc<ADC>,
 }
+
 
 
 
@@ -39,6 +40,18 @@ macro_rules! hal {
         ),
     )+) => {
         $(
+            impl DisabledAdc<$ADC> {
+                pub fn power_up(self) -> Adc<$ADC> {
+                    self.adc.adc.cr2.modify(|_, w| { w.adon().set_bit()});
+
+                    // Wait for the ADC to be ready
+                    while self.adc.adc.cr2.read().adon().bit_is_set() == false
+                        {}
+
+                    self.adc
+                }
+            }
+
             impl Adc<$ADC> {
                 /// Powers up $ADC and blocks until it's ready
                 pub fn $init(adc: $ADC, apb2: &mut APB2) -> Self {
@@ -65,16 +78,6 @@ macro_rules! hal {
                         adc,
                         current_channel: None,
                     }
-                }
-
-                pub fn power_up(mut disabled: DisabledAdc<$ADC>) -> Self{
-                    disabled.adc.adc.cr2.modify(|_, w| { w.adon().set_bit()});
-
-                    // Wait for the ADC to be ready
-                    while disabled.adc.adc.cr2.read().adon().bit_is_set() == false
-                        {}
-
-                    disabled.adc
                 }
 
                 pub fn power_down(self) -> DisabledAdc<$ADC> {
