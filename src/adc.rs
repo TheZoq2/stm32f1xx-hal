@@ -23,6 +23,13 @@ pub enum AdcReadError {
     Busy
 }
 
+struct DisabledAdc<ADC> {
+    adc: Adc<ADC>,
+}
+
+
+
+
 macro_rules! hal {
     ($(
         $ADC:ident: (
@@ -53,9 +60,27 @@ macro_rules! hal {
                     // Amount of conversions n-1
 
                     unsafe{adc.sqr1.modify(|_, w| w.l().bits(0))}
+
                     Self {
                         adc,
                         current_channel: None,
+                    }
+                }
+
+                pub fn power_up(mut disabled: DisabledAdc<$ADC>) -> Self{
+                    disabled.adc.adc.cr2.modify(|_, w| { w.adon().set_bit()});
+
+                    // Wait for the ADC to be ready
+                    while disabled.adc.adc.cr2.read().adon().bit_is_set() == false
+                        {}
+
+                    disabled.adc
+                }
+
+                pub fn power_down(self) -> DisabledAdc<$ADC> {
+                    self.adc.cr2.modify(|_, w| {w.adon().clear_bit()});
+                    DisabledAdc {
+                        adc: self
                     }
                 }
 
