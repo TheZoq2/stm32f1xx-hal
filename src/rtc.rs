@@ -1,6 +1,7 @@
 use stm32::{RTC};
 
-use crate::rcc::Clocks;
+use crate::rcc::Lse;
+use crate::backup_domain::BackupDomain;
 
 
 /*
@@ -23,7 +24,8 @@ use crate::rcc::Clocks;
   are writeable and that the clock has been configured correctly.
 */
 pub struct Rtc {
-    regs: RTC
+    regs: RTC,
+    _lse: Lse,
 }
 
 
@@ -32,53 +34,66 @@ impl Rtc {
       Initialises the RTC, this should only be called if access to the backup
       domain has been enabled
     */
-    pub(crate) fn rtc(regs: RTC, _clocks: &Clocks) -> Self {
+    pub fn rtc(regs: RTC, lse: Lse, _bkp: &BackupDomain) -> Self {
         // Set the prescaler to make it count up once every second
         // The manual on page 490 says that the prescaler value for this should be 7fffh
-        regs.prll.write(|w| unsafe{w.bits(0x7fff)});
-        regs.prlh.write(|w| unsafe{w.bits(0)});
+        let mut result = Rtc {
+            regs,
+            _lse: lse,
+        };
 
-        Rtc {
-            regs
-        }
+        let freq = lse.freq().0;
+        let prl = freq - 1;
+        assert!(prl < 1 << 20);
+        result.perform_write(|s| {
+            s.regs.prlh.write(|w| unsafe { w.bits(prl >> 16) });
+            s.regs.prll.write(|w| unsafe { w.bits(prl as u16 as u32) });
+        });
+
+        result
     }
 
-    /// Starts an alarm which will trigger the RTCALARM interrupt in `time_seconds`
-    pub fn set_alarm(&mut self, time_seconds: u32) {
-        // Reset counter
+    /// Set the current rtc value to the specified amount of counts
+    pub fn set_cnt(&mut self, counts: u32) {
         self.perform_write(|s| {
-            s.regs.cnth.write(|w| unsafe{w.bits(0)});
+            s.regs.cnth.write(|w| unsafe{w.bits(counts >> 16)});
         });
         self.perform_write(|s| {
-            s.regs.cntl.write(|w| unsafe{w.bits(0)});
+            s.regs.cntl.write(|w| unsafe{w.bits(counts)});
         });
+    }
 
+    /// Sets the time at which an alarm will be triggered
+    pub fn set_alarm(&mut self, counts: u32) {
         // Set alarm time
         // See section 18.3.5 for explanation
-        let alarm_value = time_seconds - 1;
+        let alarm_value = counts - 1;
         self.perform_write(|s| {
             s.regs.alrh.write(|w| unsafe{w.alrh().bits((alarm_value >> 16) as u16)});
         });
         self.perform_write(|s| {
             s.regs.alrl.write(|w| unsafe{w.alrl().bits((alarm_value & 0x0000ffff) as u16)});
         });
+    }
 
+    /// Enables the RTCALARM interrupt
+    pub fn listen_alarm(&mut self) {
         // Enable alarm interrupt
         self.perform_write(|s| {
             s.regs.crh.modify(|_, w| w.alrie().set_bit());
         })
     }
 
-    /// Disables a previously set alarm
-    pub fn disable_alarm(&mut self) {
+    /// Disables the RTCALARM interrupt
+    pub fn unlisten_alarm(&mut self) {
         // Disable alarm interrupt
         self.perform_write(|s| {
             s.regs.crh.modify(|_, w| w.alrie().clear_bit());
         })
     }
 
-    /// Reads the current second since the RTC device was initialised
-    pub fn read(&self) -> u32 {
+    /// Reads the current time
+    pub fn read_counts(&self) -> u32 {
         // Wait for the APB1 interface to be ready
         while self.regs.crl.read().rsf().bit() == false {}
 
@@ -131,6 +146,6 @@ impl Rtc {
         // Take the device out of config mode
         self.regs.crl.modify(|_, w| w.cnf().clear_bit());
         // Wait for the write to be done
-        while self.regs.crl.read().rtoff().bit() == false {}
+        while !self.regs.crl.read().rtoff().bit() {}
     }
 }

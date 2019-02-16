@@ -1,4 +1,4 @@
-//! Blinks an LED
+//! Outputs the current time in seconds to hstdout using the real time clock
 
 #![deny(unsafe_code)]
 #![deny(warnings)]
@@ -18,6 +18,8 @@ use sh::hio;
 
 use core::fmt::Write;
 
+use hal::rtc::Rtc;
+
 #[entry]
 fn main() -> ! {
     let mut hstdout = hio::hstdout().unwrap();
@@ -27,13 +29,14 @@ fn main() -> ! {
     let mut pwr = p.PWR;
     let mut flash = p.FLASH.constrain();
     let mut rcc = p.RCC.constrain();
-    let backup_domain = rcc.cfgr.enable_backup_domain(&mut pwr);
-    let clocks = rcc.cfgr.freeze(&mut flash.acr);
+    let backup_domain = rcc.bkp.constrain(p.BKP, &mut rcc.apb1, &mut pwr);
+    let _clocks = rcc.cfgr.freeze(&mut flash.acr);
+    let lse = rcc.lse.freeze(&backup_domain);
 
-    let rtc = backup_domain.rtc(p.RTC, &clocks);
+    let rtc = Rtc::rtc(p.RTC, lse, &backup_domain);
 
     loop {
-        writeln!(hstdout, "time: {}", rtc.read()).unwrap();
+        writeln!(hstdout, "time: {}", rtc.read_counts()).unwrap();
     }
 }
 
