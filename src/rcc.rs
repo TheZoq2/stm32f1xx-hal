@@ -234,6 +234,7 @@ impl CFGR {
         assert!(pclk2 <= 72_000_000);
 
         // adjust flash wait states
+        #[cfg(feature = "stm32f103")]
         unsafe {
             acr.acr().write(|w| {
                 w.latency().bits(if sysclk <= 24_000_000 {
@@ -294,6 +295,7 @@ impl CFGR {
 
 
         // set prescalers and clock source
+        #[cfg(feature = "stm32f103")]
         rcc.cfgr.modify(|_, w| unsafe {
             w.adcpre().variant(adc_prescaler);
             w.ppre2()
@@ -304,6 +306,27 @@ impl CFGR {
                 .bits(hpre_bits)
                 .usbpre()
                 .bit(usbpre)
+                .sw()
+                .bits(if pllmul_bits.is_some() {
+                    // PLL
+                    0b10
+                } else if self.hse.is_some() {
+                    // HSE
+                    0b1
+                } else {
+                    // HSI
+                    0b0
+                })
+        });
+
+        #[cfg(feature = "stm32f100")]
+        rcc.cfgr.modify(|_, w| unsafe {
+            w.ppre2()
+                .bits(ppre2_bits)
+                .ppre1()
+                .bits(ppre1_bits)
+                .hpre()
+                .bits(hpre_bits)
                 .sw()
                 .bits(if pllmul_bits.is_some() {
                     // PLL
