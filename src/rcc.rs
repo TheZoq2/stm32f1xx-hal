@@ -279,8 +279,15 @@ impl CFGR {
             })
             .unwrap_or(0b11);
 
-        let apre = (apre_bits + 1) << 1;
-        let adcclk = pclk2 / u32(apre);
+        //let apre = (apre_bits + 1) << 1;
+        let apre = match apre_bits {
+            0b00 => 2,
+            0b01 => 4,
+            0b10 => 6,
+            0b11 => 8,
+            _ => unreachable!(),
+        };
+        let adcclk = pclk2 / apre;
 
         assert!(adcclk <= 14_000_000);
 
