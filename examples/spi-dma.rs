@@ -46,17 +46,18 @@ fn main() -> ! {
     // Set up the DMA device
     let dma = dp.DMA1.split(&mut rcc.ahb);
 
+    static mut __BUFFER: [u8;32] = [0;32];
+    static mut _BUFFER: &'static mut [u8] = unsafe {&mut __BUFFER};
+    // static mut BUFFER: &'static mut &'static mut [u8] = unsafe{&mut (&mut __BUFFER as &'static mut [u8])};
     // Connect the SPI device to the DMA
-    let spi_dma = spi.with_tx_dma(dma.3);
+    let mut spi_dma = spi.with_tx_dma(dma.3).into_buffered(unsafe{&mut _BUFFER});
 
     // Start a DMA transfe
-    static mut _BUFFER: [u8;4] = [0;4];
-    static mut BUFFER: &'static mut [u8;4] = unsafe{&mut _BUFFER};
-    let transfer = spi_dma.write(b"hello, world");
+    spi_dma.write(b"hello, world");
 
     // Wait for it to finnish. The transfer takes ownership over the SPI device
     // and the data being sent anb those things are returned by transfer.wait
-    let (_buffer, _spi_dma) = transfer.wait();
+    // let (_buffer, _spi_dma) = transfer.wait();
 
     loop {}
 }

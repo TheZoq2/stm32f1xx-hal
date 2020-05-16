@@ -484,6 +484,51 @@ macro_rules! spi_dma {
             }
         }
 
+        impl<REMAP, PIN> SpiTxDma<$SPIi, REMAP, PIN, $TCi>
+        {
+            fn write_amount<A, B>(mut self, buffer: B, amount: usize) -> Transfer<R, B, Self>
+            where
+                A: AsSlice<Element = u8>,
+                B: Static<A>,
+            {
+                {
+                    let buffer = buffer.borrow().as_slice();
+                    self.channel.set_peripheral_address(
+                        unsafe { &(*$SPIi::ptr()).dr as *const _ as u32 },
+                        false,
+                    );
+                    self.channel
+                        .set_memory_address(buffer.as_ptr() as u32, true);
+                    self.channel.set_transfer_length(amount);
+                }
+                atomic::compiler_fence(Ordering::Release);
+                self.channel.ch().cr.modify(|_, w| {
+                    w
+                        // memory to memory mode disabled
+                        .mem2mem()
+                        .clear_bit()
+                        // medium channel priority level
+                        .pl()
+                        .medium()
+                        // 8-bit memory size
+                        .msize()
+                        .bits8()
+                        // 8-bit peripheral size
+                        .psize()
+                        .bits8()
+                        // circular mode disabled
+                        .circ()
+                        .clear_bit()
+                        // read from memory
+                        .dir()
+                        .set_bit()
+                });
+                self.start();
+
+                Transfer::r(buffer, self)
+            }
+        }
+
         impl<REMAP, PINS> crate::hal::blocking::spi::Write<u8>
             for BufferedDma<$SPIi, REMAP, PINS, $TCi>
         {
@@ -499,7 +544,7 @@ macro_rules! spi_dma {
                     for i in 0..count {
                         buffer[i] = remaining[i]
                     }
-                    let transfer = inner.write(buffer);
+                    let transfer = inner.write_amount(buffer, count);
                     let (buffer, dma) = transfer.wait();
                     self.buffer = Some(buffer);
                     self.inner = Some(dma);
